@@ -108,14 +108,14 @@ class TransactionEnricher:
         self,
         results: list[EnrichmentResult],
         filename: str | None = None,
-        format: str = "json",
+        output_format: str = "json",
     ) -> Path:
         """Save enrichment results to a file.
 
         Args:
             results: List of EnrichmentResults to save
             filename: Output filename (without extension). Defaults to timestamp.
-            format: Output format ('json' or 'jsonl')
+            output_format: Output format ('json' or 'jsonl')
 
         Returns:
             Path to the saved file
@@ -123,7 +123,7 @@ class TransactionEnricher:
         if filename is None:
             filename = f"enrichments_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-        extension = ".jsonl" if format == "jsonl" else ".json"
+        extension = ".jsonl" if output_format == "jsonl" else ".json"
         output_path = self.output_dir / f"{filename}{extension}"
 
         # Convert results to serializable format
@@ -132,7 +132,7 @@ class TransactionEnricher:
             result_dict = result.model_dump(mode="json", exclude_none=True)
             serializable_results.append(result_dict)
 
-        if format == "jsonl":
+        if output_format == "jsonl":
             with output_path.open("w", encoding="utf-8") as f:
                 for result in serializable_results:
                     f.write(json.dumps(result, ensure_ascii=False) + "\n")

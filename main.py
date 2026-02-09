@@ -228,7 +228,7 @@ async def main() -> int:
     # Save results
     console.print("\n[bold]Saving results...[/bold]")
 
-    results_path = enricher.save_results(results, format=args.format)
+    results_path = enricher.save_results(results, output_format=args.format)
     console.print(f"  Results saved to: [green]{results_path}[/green]")
 
     summary_path = enricher.save_summary(results)

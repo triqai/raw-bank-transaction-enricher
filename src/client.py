@@ -250,6 +250,9 @@ class TriqaiClient:
     ) -> list[EnrichmentResult]:
         """Enrich multiple transactions concurrently.
 
+        Uses a shared HTTP client for connection pooling across all requests,
+        with a semaphore to limit concurrency.
+
         Args:
             transactions: List of transactions to enrich
             progress_callback: Optional callback(completed, total) for progress updates
@@ -261,20 +264,19 @@ class TriqaiClient:
             return []
 
         self._semaphore = asyncio.Semaphore(self.max_concurrent)
-        results: list[EnrichmentResult] = []
         completed = 0
         total = len(transactions)
 
-        async def process_one(idx: int, txn: Transaction) -> tuple[int, EnrichmentResult]:
+        async def process_one(
+            shared_client: httpx.AsyncClient, idx: int, txn: Transaction
+        ) -> tuple[int, EnrichmentResult]:
             async with self._semaphore:
-                async with httpx.AsyncClient() as client:
-                    result = await self._make_request(client, txn)
-                    return idx, result
+                result = await self._make_request(shared_client, txn)
+                return idx, result
 
         async with httpx.AsyncClient() as client:
-            tasks = [process_one(i, txn) for i, txn in enumerate(transactions)]
+            tasks = [process_one(client, i, txn) for i, txn in enumerate(transactions)]
 
-            # Process results as they complete
             results_dict: dict[int, EnrichmentResult] = {}
 
             for coro in asyncio.as_completed(tasks):
@@ -290,7 +292,6 @@ class TriqaiClient:
                     f"({'success' if result.success else 'failed'})"
                 )
 
-        # Return results in original order
         return [results_dict[i] for i in range(len(transactions))]
 
     @property
