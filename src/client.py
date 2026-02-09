@@ -114,8 +114,9 @@ class TriqaiClient:
         """Wait if rate limit is approaching or exceeded."""
         async with self._rate_limit_lock:
             if self._rate_limit_info and self._rate_limit_info.remaining == 0:
-                if self._rate_limit_info.reset:
-                    wait_time = max(0, self._rate_limit_info.reset - time.time())
+                reset_ts = self._rate_limit_info.get_reset_timestamp()
+                if reset_ts:
+                    wait_time = max(0, reset_ts - time.time())
                     if wait_time > 0:
                         logger.warning(f"Rate limit reached. Waiting {wait_time:.1f}s until reset...")
                         await asyncio.sleep(wait_time + 0.5)  # Add buffer

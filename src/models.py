@@ -388,7 +388,8 @@ class RateLimitInfo(BaseModel):
 
     limit: int | None = None
     remaining: int | None = None
-    reset: int | None = None
+    reset: str | None = None
+    burst: int | None = None
 
     @classmethod
     def from_headers(cls, headers: dict[str, str]) -> RateLimitInfo:
@@ -396,8 +397,18 @@ class RateLimitInfo(BaseModel):
         return cls(
             limit=int(headers.get("X-RateLimit-Limit", 0)) or None,
             remaining=int(headers.get("X-RateLimit-Remaining", 0)) or None,
-            reset=int(headers.get("X-RateLimit-Reset", 0)) or None,
+            reset=headers.get("X-RateLimit-Reset") or None,
+            burst=int(headers.get("X-RateLimit-Burst", 0)) or None,
         )
+
+    def get_reset_timestamp(self) -> float | None:
+        """Parse the ISO reset timestamp to a Unix timestamp for comparison."""
+        if not self.reset:
+            return None
+        try:
+            return datetime.fromisoformat(self.reset.replace("Z", "+00:00")).timestamp()
+        except (ValueError, AttributeError):
+            return None
 
 
 class EnrichmentResult(BaseModel):
