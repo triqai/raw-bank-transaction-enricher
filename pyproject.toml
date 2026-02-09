@@ -1,14 +1,24 @@
 [project]
 name = "bank-transaction-enricher"
 version = "1.0.0"
-description = "Transform raw bank transactions into structured, actionable data"
+description = "Transform raw bank transactions into structured, enriched data using the Triqai API"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
-keywords = ["transactions", "enrichment", "banking", "fintech", "api"]
+keywords = [
+    "transactions",
+    "enrichment",
+    "banking",
+    "fintech",
+    "api",
+    "categorization",
+    "merchant",
+    "pydantic",
+]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
@@ -16,7 +26,15 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Office/Business :: Financial",
+    "Typing :: Typed",
 ]
+
+[project.urls]
+Homepage = "https://github.com/triqai/bank-transaction-enricher"
+Documentation = "https://github.com/triqai/bank-transaction-enricher#readme"
+Repository = "https://github.com/triqai/bank-transaction-enricher"
+Issues = "https://github.com/triqai/bank-transaction-enricher/issues"
+API = "https://triqai.com"
 
 dependencies = [
     "httpx>=0.27.0",
