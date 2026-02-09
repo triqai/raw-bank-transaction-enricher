@@ -33,18 +33,22 @@ env/
 *.swo
 *~
 
-# Environment
+# Environmen
 .env
 .env.local
 .env.*.local
 
 # Output
 output/
+
+# Logs
 *.log
 
 # OS
 .DS_Store
 Thumbs.db
+ehthumbs.db
+Desktop.ini
 
 # Testing
 .pytest_cache/
@@ -57,3 +61,7 @@ htmlcov/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# Distribution
+*.tar.gz
+*.whl
