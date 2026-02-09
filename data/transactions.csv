@@ -1,0 +1,40 @@
+country,type,title,comment
+BR,expense,"PIX ENVIADO - CHAVE: joaosilva@gmail.com - ID: E123ABC456 - NOME: JOAO SILVA",P2P transfer to JOAO SILVA
+GB,expense,"CARD PAYMENT - CONTACTLESS, FALLOW, LONDON GB, TRN 000123",Fallow restaurant
+US,expense,"#10219 WOODBURY COMM CENTRAL VALLE USA",Woodbury commercial park
+ID,expense,"% ARABICA BEACHWALK BADUNG KUTA ID",Arabica coffee
+AX,expense,"MASTECARD SVARTA KATTEN PAYMENT #5789",Svarta katten caffee
+US,expense,"ACH DEBIT WEB STRIPE*TRIQAI 12/27",Triqai
+US,expense,"SQ *VERVE ROASTERS gosq.com CA",Verve coffee
+JP,expense,"ファミリーマート 道頓堀847 大阪店 JP WAON",Familymart Osaka
+NZ,expense,"Z Mana - 1232",Z mana tank station
+NZ,expense,"#6789 'CHEMWAREHOUSE' TAUPŌ",chemistwarehouse
+NZ,expense,"New World Metro Willis Wellington Nz",Metro wellington
+ES,expense,"applepay La Barrica teruel",Restaurant La barrica
+PT,expense,"PP* #56789 MK:678321 LELLO, PORTO Ref:hwjk2-23123 PAGAMENTO",Lello porto books
+IS,expense,"braintree* Núpar 'Takk fyrir að hafa dvalið hjá okkur.'",Nupar hotel
+VN,expense,"UBEBE 284729 VN HOI AN VISA DEBIT SCAN DIRECT",Ubebe coffee
+DE,expense,"ADOBE *CREATIVE CLD ADOBE.COM 408-536-6000 SJ",Adobe purchase
+US,expense,"APPLE.COM/BILL ONE APPLE PARK WAY 866-712-7753",Apple Digital purchase
+US,income,"Walmart check 23/04",Salary walmart
+NL,income,"SURFTURF.DIGITAL SALARIS DECEMBER 25 #890",Salary Surfturf.digital
+US,income,"ACH CREDIT TARGET PAYROLL PPD ID: 9284729472",Salary Target
+KR,income,"급여이체 삼성전자 SAMSUNG SALARY 847293 KRW",Salary Samsung
+PL,income,"UPWORK ESCROW INC 8472947 PAYOUT",Freelance income
+BE,income,"HYPERWALLET 847293 ADOBE STOCK CONTRIBUTOR",Adobe
+NL,income,"JUST EAT TAKEAWAY COURIER 28472 NL EUR SEPA CT",Just eats income
+GB,income,"TWITCH INTERACTIVE 284729 AFFILIATE PAYOUT",Twitch payout
+BE,income,"ALLY BANK INTEREST 8472947 HIGH YIELD SAVINGS",Interest
+JP,income,"国税庁 TAX REFUND 847293 確定申告 還付金 JP JPY",Tax refund
+NL,income,"TIKKIE ONTVANGEN 8472947 VAN JAN DE VRIES NL",P2P income
+US,income,"KLARNA REFUND 8472947 PAY LATER ADJUSTMENT SE",Refund
+PT,income,"KLARNA REEMBOLSO 8472947 PAGAR DEPOIS AJUSTAR SE",Refund
+DE,expense,"FOLGELASTSCHRIFT SEPA-BASIS-LASTSCHRIFT Einreicher-ID DE98ZZZ09999999999 AMAZON PAYMENTS EUROPE S.C.A. Mandatsreferenz 284729x8472 Ihr Einkauf bei AMAZON EU S.A.R.L., NIEDERLASSUNG DEUTSCHLAND",Amazon
+NL,expense,"Betaalverzoek van A. Eerdmans Omschrijving: Etentje gisteren Kenmerk: bunq.me/284729",P2P
+NO,expense,"VIPPS FRA +4712345678 Pizzaen i går REF 847293",P2P
+US,income,"FD/INTEREST CREDIT/FD A/C 847293284729/RATE 7.10%/PERIOD 01-JAN TO 31-MAR",Interest
+BR,expense,"TED RECEBIDA - DOC/TED 847293 FAVORECIDO TIM S.A. CNPJ 28.472.947/0001-29 BCO ITAU UNIBANCO S.A. HIST PAGAMENTO NF 847293",TIM S.A.
+NL,expense,"ADYEN.STRIPE.NINTENDO AMSTERDAM NL USD 59.99 FX 0.92847 CARD ****4829 MCC 5816",Nintendo
+ID,expense,"GOPAY*OVO*TOKOPEDIA*SELLER284729 JKT ID IDR 847293 QRIS MPM 28/01 14:23 TID 84729384",Tokopedia
+BR,expense,"STONE*IFOOD*ARCOS DORADOS SAO PAULO BR PIX INST 284729847293 CNPJ 42.591.651/0001-43",Arcos Dorados
+AE,expense,"PAYFORT*AMAZON PAYMENT SVCS*CAREEM*UBER TECHNOLOGIES DUBAI AE AED 84.72 VAT 5% TRN 100847293847293","Amazon, Careem, or Uber"
