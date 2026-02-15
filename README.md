@@ -18,11 +18,26 @@ SQ *VERVE ROASTERS gosq.com CA
 
 ```json
 {
-  "merchant": { "name": "Verve Coffee Roasters", "website": "vervecoffee.com" },
-  "category": { "primary": "Food & Beverages", "secondary": "Cafes" },
-  "location": { "city": "Santa Cruz", "state": "CA", "country": "US" },
+  "category": {
+    "primary": "Food & Beverages",
+    "secondary": "Cafes",
+    "confidence": 95
+  },
   "channel": "in_store",
-  "paymentProcessor": { "name": "Square" }
+  "entities": [
+    {
+      "type": "merchant",
+      "name": "Verve Coffee Roasters",
+      "website": "vervecoffee.com"
+    },
+    {
+      "type": "location",
+      "city": "Santa Cruz",
+      "state": "CA",
+      "country": "US"
+    },
+    { "type": "intermediary", "role": "processor", "name": "Square" }
+  ]
 }
 ```
 
@@ -36,10 +51,11 @@ Powered by the [Triqai API](https://triqai.com), which handles merchant identifi
 
 - **Merchant Identification**: Resolve raw strings to clean merchant names, logos, and websites
 - **Smart Categorization**: Hierarchical categories (primary/secondary/tertiary) with MCC, SIC, and NAICS codes
-- **Location Extraction**: Structured addresses, coordinates, and timezones
-- **Payment Processor Detection**: Identify Square, Stripe, Adyen, PayPal, and others
-- **P2P Recognition**: Detect Venmo, Zelle, PIX, Tikkie, VIPPS, and other transfer platforms
+- **Location Extraction**: Structured addresses, coordinates, timezones, ratings, and price ranges
+- **Intermediary Detection**: Identify payment processors (Stripe, Square, Adyen), delivery platforms (DoorDash, Uber Eats), wallets (Apple Pay, Google Pay), and P2P services (Venmo, Zelle, PIX, Tikkie)
+- **Person Recognition**: Detect P2P transfer recipients with display names
 - **Subscription Detection**: Flag recurring payments and classify subscription types
+- **Confidence Scores**: Per-entity confidence values with explanatory reason tags
 - **Async & Concurrent**: Process hundreds of transactions in parallel with built-in rate limiting
 - **Rich CLI Output**: Progress bars, colored tables, and summary statistics
 
@@ -116,20 +132,32 @@ async def main():
 
     if result.success:
         data = result.data
-        enrichments = data.enrichments
 
-        # Merchant info
-        if enrichments.merchant and enrichments.merchant.data:
-            print(f"Merchant: {enrichments.merchant.data.name}")
-            print(f"Website:  {enrichments.merchant.data.website}")
+        # Merchant info (from entities array)
+        merchant = data.merchant
+        if merchant:
+            print(f"Merchant: {merchant.get_name()}")
+            print(f"Website:  {merchant.data.get('website')}")
+            print(f"Confidence: {merchant.confidence.value} ({merchant.confidence.reasons})")
 
         # Category
         print(f"Category: {data.transaction.get_primary_category_name()}")
 
-        # Location
-        if enrichments.location and enrichments.location.data:
-            loc = enrichments.location.data
-            print(f"Location: {loc.structured.city}, {loc.structured.state}")
+        # Location (from entities array)
+        location = data.location
+        if location:
+            structured = location.data.get("structured", {})
+            print(f"Location: {structured.get('city')}, {structured.get('state')}")
+
+        # Intermediary (processors, platforms, wallets, P2P services)
+        intermediary = data.intermediary
+        if intermediary:
+            print(f"Intermediary: {intermediary.get_name()} (role: {intermediary.role})")
+
+        # Person (P2P recipient)
+        person = data.person
+        if person:
+            print(f"Recipient: {person.get_name()}")
 
 asyncio.run(main())
 ```
@@ -198,10 +226,12 @@ The included `data/transactions.csv` covers diverse real-world patterns across 1
 
 Results are saved to the `output/` directory:
 
-- **`enrichments_<timestamp>.json`**: Full enrichment data for each transaction
-- **`summary_<timestamp>.json`**: Aggregate statistics and category distribution
+- **`enrichments_<timestamp>.json`** -- Full enrichment data for each transaction
+- **`summary_<timestamp>.json`** -- Aggregate statistics and category distribution
 
 ### Example Enrichment Response
+
+The API uses an **entities array** pattern. Only identified entities are included. Each entity has a `type`, `role`, `confidence` (with reason tags), and type-specific `data`.
 
 ```json
 {
@@ -226,12 +256,16 @@ Results are saved to the `output/` directory:
       },
       "channel": "in_store",
       "subscription": { "recurring": false },
-      "confidence": 92
+      "confidence": { "value": 92, "reasons": [] }
     },
-    "enrichments": {
-      "merchant": {
-        "status": "found",
-        "confidence": 95,
+    "entities": [
+      {
+        "type": "merchant",
+        "role": "organization",
+        "confidence": {
+          "value": 98,
+          "reasons": ["name_closely_matched", "results_consensus"]
+        },
         "data": {
           "id": "...",
           "name": "Verve Coffee Roasters",
@@ -240,9 +274,13 @@ Results are saved to the `output/` directory:
           "icon": "https://..."
         }
       },
-      "location": {
-        "status": "found",
-        "confidence": 85,
+      {
+        "type": "location",
+        "role": "store_location",
+        "confidence": {
+          "value": 85,
+          "reasons": ["city_match", "address_closely_matched"]
+        },
         "data": {
           "id": "...",
           "name": "Verve Coffee Roasters",
@@ -259,17 +297,13 @@ Results are saved to the `output/` directory:
           }
         }
       },
-      "paymentProcessor": {
-        "status": "found",
-        "confidence": 99,
+      {
+        "type": "intermediary",
+        "role": "processor",
+        "confidence": { "value": 99, "reasons": ["known_processor_match"] },
         "data": { "id": "...", "name": "Square", "website": "squareup.com" }
-      },
-      "peerToPeer": {
-        "status": "not_applicable",
-        "confidence": null,
-        "data": null
       }
-    }
+    ]
   }
 }
 ```
@@ -294,10 +328,11 @@ client.rate_limit_info  # RateLimitInfo(limit=10, remaining=87, reset='2026-01-1
 
 Response headers tracked:
 
-- `X-RateLimit-Limit`: Requests per second (sustained refill rate)
-- `X-RateLimit-Remaining`: Current tokens available (can burst up to this many instantly)
-- `X-RateLimit-Reset`: ISO timestamp when tokens start refilling
-- `X-RateLimit-Burst`: Maximum burst capacity
+- `X-RateLimit-Limit` -- Requests per second (sustained refill rate)
+- `X-RateLimit-Remaining` -- Current tokens available (can burst up to this many instantly)
+- `X-RateLimit-Reset` -- ISO timestamp when tokens start refilling
+- `X-RateLimit-Burst` -- Maximum burst capacity
+- `Retry-After` -- Milliseconds until a token is available (on 429 responses)
 
 ## Project Structure
 
