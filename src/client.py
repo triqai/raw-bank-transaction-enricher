@@ -19,6 +19,7 @@ from tenacity import (
 from .models import (
     EnrichmentResult,
     EnrichSuccessResponse,
+    ErrorDetail,
     ErrorResponse,
     RateLimitInfo,
     Transaction,
@@ -114,12 +115,19 @@ class TriqaiClient:
         """Wait if rate limit is approaching or exceeded."""
         async with self._rate_limit_lock:
             if self._rate_limit_info and self._rate_limit_info.remaining == 0:
-                reset_ts = self._rate_limit_info.get_reset_timestamp()
-                if reset_ts:
-                    wait_time = max(0, reset_ts - time.time())
-                    if wait_time > 0:
-                        logger.warning(f"Rate limit reached. Waiting {wait_time:.1f}s until reset...")
-                        await asyncio.sleep(wait_time + 0.5)  # Add buffer
+                # Prefer Retry-After header (milliseconds) if available
+                retry_after = self._rate_limit_info.get_retry_after_seconds()
+                if retry_after and retry_after > 0:
+                    logger.warning(f"Rate limit reached. Waiting {retry_after:.1f}s (Retry-After)...")
+                    await asyncio.sleep(retry_after + 0.1)
+                else:
+                    # Fall back to Reset timestamp
+                    reset_ts = self._rate_limit_info.get_reset_timestamp()
+                    if reset_ts:
+                        wait_time = max(0, reset_ts - time.time())
+                        if wait_time > 0:
+                            logger.warning(f"Rate limit reached. Waiting {wait_time:.1f}s until reset...")
+                            await asyncio.sleep(wait_time + 0.5)  # Add buffer
 
             # Enforce minimum delay between requests
             elapsed = time.time() - self._last_request_time
@@ -205,10 +213,10 @@ class TriqaiClient:
             return EnrichmentResult(
                 input=transaction,
                 success=False,
-                error={
-                    "code": "max_retries_exceeded",
-                    "message": f"Failed after {self.max_retries} attempts: {str(e.last_attempt.exception())}",
-                },
+                error=ErrorDetail(
+                    code="max_retries_exceeded",
+                    message=f"Failed after {self.max_retries} attempts: {e.last_attempt.exception()!s}",
+                ),
                 processing_time_ms=processing_time,
             )
 
@@ -218,7 +226,7 @@ class TriqaiClient:
             return EnrichmentResult(
                 input=transaction,
                 success=False,
-                error={"code": "timeout", "message": f"Request timed out after {self.timeout}s"},
+                error=ErrorDetail(code="timeout", message=f"Request timed out after {self.timeout}s"),
                 processing_time_ms=processing_time,
             )
 
@@ -228,7 +236,7 @@ class TriqaiClient:
             return EnrichmentResult(
                 input=transaction,
                 success=False,
-                error={"code": "request_error", "message": str(e)},
+                error=ErrorDetail(code="request_error", message=str(e)),
                 processing_time_ms=processing_time,
             )
 

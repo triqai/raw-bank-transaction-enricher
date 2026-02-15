@@ -1,4 +1,7 @@
-"""Pydantic models for Triqai API request and response structures."""
+"""Pydantic models for Triqai API request and response structures.
+
+Updated for API v1.1.0: entities array pattern with ConfidenceWithReasons.
+"""
 
 from __future__ import annotations
 
@@ -27,14 +30,6 @@ class TransactionChannel(str, Enum):
     UNKNOWN = "unknown"
 
 
-class EnrichmentStatus(str, Enum):
-    """Enrichment module result status."""
-
-    FOUND = "found"
-    NO_MATCH = "no_match"
-    NOT_APPLICABLE = "not_applicable"
-
-
 class SubscriptionType(str, Enum):
     """Subscription category types."""
 
@@ -46,6 +41,15 @@ class SubscriptionType(str, Enum):
     GAMING = "gaming"
     UTILITIES = "utilities"
     OTHER = "other"
+
+
+class EntityType(str, Enum):
+    """Entity types in the entities array."""
+
+    MERCHANT = "merchant"
+    LOCATION = "location"
+    INTERMEDIARY = "intermediary"
+    PERSON = "person"
 
 
 # Request Models
@@ -93,9 +97,9 @@ class Category(BaseModel):
     """
 
     name: str
-    # Nested code object (from some API responses)
+    # Nested code object (from API responses)
     code: CategoryCode | None = None
-    # Flat fields (from CategoryInfo format)
+    # Flat fields (from CategoryInfo format in /v1/categories)
     mcc: int | None = None
     sic: int | None = None
     naics: int | None = None
@@ -172,6 +176,24 @@ class StructuredAddress(BaseModel):
     timezone: str | None = None
 
 
+class ConfidenceWithReasons(BaseModel):
+    """Confidence score with explanatory reason tags (v1.1.0+)."""
+
+    value: int = Field(default=0, ge=0, le=100, description="Confidence score (0-100)")
+    reasons: list[str] = Field(default_factory=list, description="Tags explaining the confidence score")
+
+
+class LocationRating(BaseModel):
+    """Location rating information."""
+
+    average: float | None = None
+    count: int | None = None
+    source: str | None = None
+
+
+# Entity Data Models
+
+
 class MerchantData(BaseModel):
     """Merchant information."""
 
@@ -193,82 +215,81 @@ class LocationData(BaseModel):
     name: str | None = None
     formatted: str | None = None
     phoneNumber: str | None = None
+    website: str | None = None
+    priceRange: str | None = None
+    rating: LocationRating | None = None
     structured: StructuredAddress | None = None
 
 
-class PaymentProcessorData(BaseModel):
-    """Payment processor information."""
+class IntermediaryData(BaseModel):
+    """Intermediary information (payment processors, platforms, wallets, P2P services).
+
+    Replaces the old separate PaymentProcessorData and P2PPlatformInfo models.
+    Roles: processor, platform, wallet, p2p.
+    """
 
     id: str | None = None
     name: str
     icon: str | None = None
+    description: str | None = None
     color: str | None = None
     website: str | None = None
+    domain: str | None = None
 
 
-class P2PPlatformInfo(BaseModel):
-    """P2P platform information."""
+class PersonData(BaseModel):
+    """Person information (P2P transfer recipients)."""
 
-    id: str | None = None
-    name: str | None = None
-    icon: str | None = None
-    color: str | None = None
-    website: str | None = None
+    displayName: str
 
 
-class P2PRecipient(BaseModel):
-    """P2P recipient information."""
-
-    displayName: str | None = None
+# Entity Result (v1.1.0 entities array pattern)
 
 
-class P2PData(BaseModel):
-    """P2P transfer information."""
+class EntityResult(BaseModel):
+    """An enriched entity from the entities array.
 
-    platform: P2PPlatformInfo | None = None
-    recipient: P2PRecipient | None = None
-    memo: str | None = None
+    Each entity has a type, role, confidence (with reasons), and type-specific data.
+    Only identified entities are included -- no "status: no_match" entries.
+    """
+
+    type: str = Field(..., description="Entity type: merchant, location, intermediary, person")
+    role: str = Field(..., description="Contextual role (e.g. organization, store_location, processor, recipient)")
+    confidence: ConfidenceWithReasons = Field(default_factory=ConfidenceWithReasons)
+    data: dict[str, Any] = Field(default_factory=dict)
+
+    def get_name(self) -> str | None:
+        """Get the primary display name from entity data, regardless of type."""
+        if self.type == EntityType.PERSON:
+            return self.data.get("displayName")
+        return self.data.get("name")
+
+    def as_merchant(self) -> MerchantData | None:
+        """Parse data as MerchantData if this is a merchant entity."""
+        if self.type == EntityType.MERCHANT:
+            return MerchantData.model_validate(self.data)
+        return None
+
+    def as_location(self) -> LocationData | None:
+        """Parse data as LocationData if this is a location entity."""
+        if self.type == EntityType.LOCATION:
+            return LocationData.model_validate(self.data)
+        return None
+
+    def as_intermediary(self) -> IntermediaryData | None:
+        """Parse data as IntermediaryData if this is an intermediary entity."""
+        if self.type == EntityType.INTERMEDIARY:
+            return IntermediaryData.model_validate(self.data)
+        return None
+
+    def as_person(self) -> PersonData | None:
+        """Parse data as PersonData if this is a person entity."""
+        if self.type == EntityType.PERSON:
+            return PersonData.model_validate(self.data)
+        return None
 
 
-class MerchantEnrichment(BaseModel):
-    """Merchant enrichment result."""
-
-    status: EnrichmentStatus
-    confidence: int | None = None
-    data: MerchantData | None = None
-
-
-class LocationEnrichment(BaseModel):
-    """Location enrichment result."""
-
-    status: EnrichmentStatus
-    confidence: int | None = None
-    data: LocationData | None = None
-
-
-class PaymentProcessorEnrichment(BaseModel):
-    """Payment processor enrichment result."""
-
-    status: EnrichmentStatus
-    confidence: int | None = None
-    data: PaymentProcessorData | None = None
-
-
-class P2PEnrichment(BaseModel):
-    """P2P enrichment result."""
-
-    status: EnrichmentStatus
-    confidence: int | None = None
-    data: P2PData | None = None
-
-
-class Enrichments(BaseModel):
-    """All enrichment results."""
-
-    merchant: MerchantEnrichment | None = None
-    location: LocationEnrichment | None = None
-    paymentProcessor: PaymentProcessorEnrichment | None = None
-    peerToPeer: P2PEnrichment | None = None
+# Transaction & Enrichment Data
 
 
 class TransactionData(BaseModel):
@@ -279,7 +300,7 @@ class TransactionData(BaseModel):
     category: Any = None
     subscription: Subscription | None = None
     channel: TransactionChannel | str = TransactionChannel.UNKNOWN
-    confidence: int = Field(default=0, ge=0, le=100)
+    confidence: ConfidenceWithReasons = Field(default_factory=ConfidenceWithReasons)
 
     @model_validator(mode="before")
     @classmethod
@@ -292,6 +313,9 @@ class TransactionData(BaseModel):
                     data["channel"] = TransactionChannel(data["channel"])
                 except ValueError:
                     data["channel"] = TransactionChannel.UNKNOWN
+            # Handle confidence as plain int (backward compat) or as object
+            if "confidence" in data and isinstance(data["confidence"], int):
+                data["confidence"] = {"value": data["confidence"], "reasons": []}
         return data
 
     @property
@@ -303,10 +327,8 @@ class TransactionData(BaseModel):
             return self.category
         if isinstance(self.category, dict):
             try:
-                # Try to parse as CategoryStructure
                 if "primary" in self.category:
                     return CategoryStructure.model_validate(self.category)
-                # If it's a flat category, wrap it
                 elif "name" in self.category:
                     return CategoryStructure(
                         primary=Category.model_validate(self.category),
@@ -321,31 +343,76 @@ class TransactionData(BaseModel):
         if self.category is None:
             return "Unknown"
 
-        # If it's already a CategoryStructure
         if isinstance(self.category, CategoryStructure):
             return self.category.primary.name
 
-        # If it's a dict
         if isinstance(self.category, dict):
-            # Check for nested primary
             if "primary" in self.category:
                 primary = self.category["primary"]
                 if isinstance(primary, dict):
                     return primary.get("name", "Unknown")
                 if isinstance(primary, Category):
                     return primary.name
-            # Flat format
             if "name" in self.category:
                 return self.category["name"]
 
         return "Unknown"
 
+    def get_confidence_value(self) -> int:
+        """Get the numeric confidence value."""
+        if isinstance(self.confidence, ConfidenceWithReasons):
+            return self.confidence.value
+        return 0
+
 
 class EnrichmentData(BaseModel):
-    """Complete enrichment data."""
+    """Complete enrichment data (v1.1.0 entities array pattern)."""
 
     transaction: TransactionData
-    enrichments: Enrichments
+    entities: list[EntityResult] = Field(default_factory=list)
+
+    def find_entity(self, entity_type: str) -> EntityResult | None:
+        """Find the first entity of a given type."""
+        return next((e for e in self.entities if e.type == entity_type), None)
+
+    def find_entities(self, entity_type: str) -> list[EntityResult]:
+        """Find all entities of a given type."""
+        return [e for e in self.entities if e.type == entity_type]
+
+    @property
+    def merchant(self) -> EntityResult | None:
+        """Get the merchant entity, if present."""
+        return self.find_entity(EntityType.MERCHANT)
+
+    @property
+    def location(self) -> EntityResult | None:
+        """Get the location entity, if present."""
+        return self.find_entity(EntityType.LOCATION)
+
+    @property
+    def intermediary(self) -> EntityResult | None:
+        """Get the first intermediary entity, if present."""
+        return self.find_entity(EntityType.INTERMEDIARY)
+
+    @property
+    def person(self) -> EntityResult | None:
+        """Get the person entity, if present."""
+        return self.find_entity(EntityType.PERSON)
+
+    def get_merchant_name(self) -> str | None:
+        """Convenience: get the merchant display name."""
+        merchant = self.merchant
+        return merchant.get_name() if merchant else None
+
+    def get_intermediary_name(self) -> str | None:
+        """Convenience: get the intermediary display name."""
+        intermediary = self.intermediary
+        return intermediary.get_name() if intermediary else None
+
+    def get_person_name(self) -> str | None:
+        """Convenience: get the person display name."""
+        person = self.person
+        return person.get_name() if person else None
 
 
 class ResponseMeta(BaseModel):
@@ -390,6 +457,7 @@ class RateLimitInfo(BaseModel):
     remaining: int | None = None
     reset: str | None = None
     burst: int | None = None
+    retry_after_ms: int | None = None
 
     @classmethod
     def from_headers(cls, headers: dict[str, str]) -> RateLimitInfo:
@@ -399,6 +467,7 @@ class RateLimitInfo(BaseModel):
             remaining=int(headers.get("X-RateLimit-Remaining", 0)) or None,
             reset=headers.get("X-RateLimit-Reset") or None,
             burst=int(headers.get("X-RateLimit-Burst", 0)) or None,
+            retry_after_ms=int(headers.get("Retry-After", 0)) or None,
         )
 
     def get_reset_timestamp(self) -> float | None:
@@ -409,6 +478,12 @@ class RateLimitInfo(BaseModel):
             return datetime.fromisoformat(self.reset.replace("Z", "+00:00")).timestamp()
         except (ValueError, AttributeError):
             return None
+
+    def get_retry_after_seconds(self) -> float | None:
+        """Get Retry-After value in seconds."""
+        if self.retry_after_ms:
+            return self.retry_after_ms / 1000.0
+        return None
 
 
 class EnrichmentResult(BaseModel):

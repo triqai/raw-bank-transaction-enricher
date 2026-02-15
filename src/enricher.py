@@ -173,7 +173,8 @@ class TransactionEnricher:
         categories: dict[str, int] = {}
         merchants_found = 0
         locations_found = 0
-        p2p_found = 0
+        intermediaries_found = 0
+        persons_found = 0
 
         for result in results:
             if result.data:
@@ -181,15 +182,15 @@ class TransactionEnricher:
                 primary_cat = result.data.transaction.get_primary_category_name()
                 categories[primary_cat] = categories.get(primary_cat, 0) + 1
 
-                # Enrichment stats - check for None
-                enrichments = result.data.enrichments
-                if enrichments:
-                    if enrichments.merchant and enrichments.merchant.status == "found":
-                        merchants_found += 1
-                    if enrichments.location and enrichments.location.status == "found":
-                        locations_found += 1
-                    if enrichments.peerToPeer and enrichments.peerToPeer.status == "found":
-                        p2p_found += 1
+                # Entity stats - iterate entities array
+                if result.data.merchant:
+                    merchants_found += 1
+                if result.data.location:
+                    locations_found += 1
+                if result.data.intermediary:
+                    intermediaries_found += 1
+                if result.data.person:
+                    persons_found += 1
 
         summary = {
             "generated_at": datetime.now().isoformat(),
@@ -205,10 +206,11 @@ class TransactionEnricher:
                 "average_processing_ms": round(avg_time, 2),
                 "transactions_per_second": round(total / (total_time / 1000), 2) if total_time > 0 else 0,
             },
-            "enrichments": {
+            "entities": {
                 "merchants_found": merchants_found,
                 "locations_found": locations_found,
-                "p2p_transfers_found": p2p_found,
+                "intermediaries_found": intermediaries_found,
+                "persons_found": persons_found,
             },
             "categories": dict(sorted(categories.items(), key=lambda x: -x[1])),
         }
@@ -264,11 +266,8 @@ class TransactionEnricher:
 
         for result in results[:5]:
             if result.success and result.data:
-                # Get merchant name safely
-                merchant_name = "N/A"
-                enrichments = result.data.enrichments
-                if enrichments and enrichments.merchant and enrichments.merchant.data:
-                    merchant_name = enrichments.merchant.data.name
+                # Get merchant name from entities array
+                merchant_name = result.data.get_merchant_name() or "N/A"
 
                 # Get category name using helper method
                 category = result.data.transaction.get_primary_category_name()

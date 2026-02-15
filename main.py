@@ -125,10 +125,8 @@ def display_results_table(results: list) -> None:
         category = "N/A"
 
         if result.data:
-            # Get merchant name safely
-            enrichments = result.data.enrichments
-            if enrichments and enrichments.merchant and enrichments.merchant.data:
-                merchant = enrichments.merchant.data.name
+            # Get merchant name from entities array
+            merchant = result.data.get_merchant_name() or "N/A"
 
             # Get category name using helper method
             category = result.data.transaction.get_primary_category_name()
