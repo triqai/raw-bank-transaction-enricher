@@ -41,35 +41,57 @@ class TriqaiAPIError(Exception):
 
 
 class RateLimitError(TriqaiAPIError):
-    """Rate limit exceeded error."""
+    """Rate limit exceeded (HTTP 429).
 
-    def __init__(self, message: str, reset_time: int | None = None):
+    Raised for both RPS and concurrency limits.
+    retry_after_seconds is sourced from the Retry-After header (seconds).
+    """
+
+    def __init__(self, message: str, retry_after_seconds: float | None = None):
         super().__init__(message, status_code=429, error_code="rate_limited")
-        self.reset_time = reset_time
+        self.retry_after_seconds = retry_after_seconds
 
 
 class AuthenticationError(TriqaiAPIError):
-    """Authentication failed error."""
+    """Authentication failed (HTTP 401)."""
 
     def __init__(self, message: str = "Invalid or missing API key"):
         super().__init__(message, status_code=401, error_code="authentication_error")
 
 
+class ForbiddenError(TriqaiAPIError):
+    """Authenticated but not authorized (HTTP 403)."""
+
+    def __init__(self, message: str = "Access denied"):
+        super().__init__(message, status_code=403, error_code="authorization_error")
+
+
 class InsufficientCreditsError(TriqaiAPIError):
-    """Insufficient credits error."""
+    """Insufficient credits (HTTP 402)."""
 
     def __init__(self, message: str = "Insufficient credits"):
         super().__init__(message, status_code=402, error_code="insufficient_credits")
 
 
+class ServiceUnavailableError(TriqaiAPIError):
+    """Service temporarily unavailable (HTTP 503). Retryable."""
+
+    def __init__(self, message: str = "Service temporarily unavailable", retry_after_seconds: float | None = None):
+        super().__init__(message, status_code=503, error_code="service_unavailable")
+        self.retry_after_seconds = retry_after_seconds
+
+
 class TriqaiClient:
     """Async client for the Triqai Transaction Enrichment API.
 
+    Defaults are tuned for the **free plan** (1 RPS, 2 concurrent in-flight).
+    Paid plans can raise these via env vars or constructor args.
+
     Features:
-    - Automatic rate limit handling with backoff
-    - Retry logic with exponential backoff
-    - Concurrent request management
-    - Detailed logging and error handling
+    - RPS throttle: enforces min delay between dispatching requests
+    - Concurrency cap: semaphore limits parallel in-flight requests
+    - 429/503 handling: honours Retry-After header (seconds) before retrying
+    - Exponential backoff on transient failures
     """
 
     BASE_URL = "https://api.triqai.com"
@@ -78,19 +100,21 @@ class TriqaiClient:
     def __init__(
         self,
         api_key: str,
-        max_concurrent: int = 5,
-        request_delay: float = 0.1,
+        max_concurrent: int = 2,
+        request_delay: float = 1.0,
         timeout: float = 30.0,
         max_retries: int = 3,
     ):
         """Initialize the Triqai client.
 
         Args:
-            api_key: Triqai API key
-            max_concurrent: Maximum concurrent requests
-            request_delay: Delay between requests in seconds
-            timeout: Request timeout in seconds
-            max_retries: Maximum retry attempts for failed requests
+            api_key: Triqai API key.
+            max_concurrent: Maximum in-flight requests at once.
+                            Free plan allows 2; raise for paid plans.
+            request_delay: Minimum seconds between dispatching requests (RPS cap).
+                           1.0 = 1 RPS (free plan limit). Lower for paid plans.
+            timeout: Request timeout in seconds.
+            max_retries: Maximum retry attempts on rate-limit / transient errors.
         """
         self.api_key = api_key
         self.max_concurrent = max_concurrent
@@ -112,14 +136,14 @@ class TriqaiClient:
         }
 
     async def _wait_for_rate_limit(self) -> None:
-        """Wait if rate limit is approaching or exceeded."""
+        """Wait if the RPS bucket is exhausted, then enforce the per-request delay."""
         async with self._rate_limit_lock:
             if self._rate_limit_info and self._rate_limit_info.remaining == 0:
-                # Prefer Retry-After header (milliseconds) if available
+                # Retry-After (seconds) is the authoritative signal on 429
                 retry_after = self._rate_limit_info.get_retry_after_seconds()
                 if retry_after and retry_after > 0:
                     logger.warning(f"Rate limit reached. Waiting {retry_after:.1f}s (Retry-After)...")
-                    await asyncio.sleep(retry_after + 0.1)
+                    await asyncio.sleep(retry_after + 0.1)  # small buffer
                 else:
                     # Fall back to Reset timestamp
                     reset_ts = self._rate_limit_info.get_reset_timestamp()
@@ -127,9 +151,9 @@ class TriqaiClient:
                         wait_time = max(0, reset_ts - time.time())
                         if wait_time > 0:
                             logger.warning(f"Rate limit reached. Waiting {wait_time:.1f}s until reset...")
-                            await asyncio.sleep(wait_time + 0.5)  # Add buffer
+                            await asyncio.sleep(wait_time + 0.5)
 
-            # Enforce minimum delay between requests
+            # Enforce minimum inter-request delay (= 1/RPS)
             elapsed = time.time() - self._last_request_time
             if elapsed < self.request_delay:
                 await asyncio.sleep(self.request_delay - elapsed)
@@ -139,10 +163,11 @@ class TriqaiClient:
         self._rate_limit_info = RateLimitInfo.from_headers(dict(headers))
         self._last_request_time = time.time()
 
-        if self._rate_limit_info.remaining is not None:
-            logger.debug(
-                f"Rate limit: {self._rate_limit_info.remaining}/{self._rate_limit_info.limit} remaining"
-            )
+        info = self._rate_limit_info
+        if info.remaining is not None:
+            logger.debug(f"RPS limit: {info.remaining}/{info.limit} remaining (scope={info.scope})")
+        if info.concurrency_remaining is not None:
+            logger.debug(f"Concurrency: {info.concurrency_remaining}/{info.concurrency_limit} remaining")
 
     async def _make_request(
         self,
@@ -153,7 +178,7 @@ class TriqaiClient:
         start_time = time.perf_counter()
 
         @retry(
-            retry=retry_if_exception_type(RateLimitError),
+            retry=retry_if_exception_type((RateLimitError, ServiceUnavailableError)),
             stop=stop_after_attempt(self.max_retries),
             wait=wait_exponential(multiplier=1, min=2, max=60),
             reraise=True,
@@ -171,8 +196,22 @@ class TriqaiClient:
             self._update_rate_limit_info(response.headers)
 
             if response.status_code == 429:
-                reset_time = self._rate_limit_info.reset if self._rate_limit_info else None
-                raise RateLimitError("Rate limit exceeded", reset_time=reset_time)
+                retry_after = (
+                    self._rate_limit_info.get_retry_after_seconds()
+                    if self._rate_limit_info else None
+                )
+                scope = self._rate_limit_info.scope if self._rate_limit_info else None
+                raise RateLimitError(
+                    f"Rate limit exceeded (scope={scope})",
+                    retry_after_seconds=retry_after,
+                )
+
+            if response.status_code == 503:
+                retry_after = (
+                    self._rate_limit_info.get_retry_after_seconds()
+                    if self._rate_limit_info else None
+                )
+                raise ServiceUnavailableError(retry_after_seconds=retry_after)
 
             return response
 
@@ -198,7 +237,10 @@ class TriqaiClient:
                 raise AuthenticationError(error_response.error.message)
             elif response.status_code == 402:
                 raise InsufficientCreditsError(error_response.error.message)
+            elif response.status_code == 403:
+                raise ForbiddenError(error_response.error.message)
             else:
+                # 409 (duplicate idempotency key), 422 (validation), 499, 500, 504 etc.
                 return EnrichmentResult(
                     input=transaction,
                     success=False,

@@ -451,23 +451,44 @@ class ErrorResponse(BaseModel):
 
 
 class RateLimitInfo(BaseModel):
-    """Rate limit information from response headers."""
+    """Rate limit information from response headers (API v1.1.2).
 
+    The API uses a token-bucket RPS limit combined with a hard concurrency cap.
+    Both dimensions can independently trigger a 429; the active one is indicated
+    by X-RateLimit-Scope.  Retry-After is in **seconds**.
+    """
+
+    # RPS bucket
     limit: int | None = None
     remaining: int | None = None
     reset: str | None = None
-    burst: int | None = None
-    retry_after_ms: int | None = None
+
+    # Concurrency cap
+    scope: str | None = None                    # "rps" or "concurrency"
+    concurrency_limit: int | None = None
+    concurrency_remaining: int | None = None
+
+    # Retry-After header (seconds, present on 429 and 503)
+    retry_after_seconds: int | None = None
 
     @classmethod
     def from_headers(cls, headers: dict[str, str]) -> RateLimitInfo:
         """Parse rate limit info from response headers."""
+        def _int(key: str) -> int | None:
+            try:
+                v = int(headers.get(key, 0))
+                return v if v > 0 else None
+            except (ValueError, TypeError):
+                return None
+
         return cls(
-            limit=int(headers.get("X-RateLimit-Limit", 0)) or None,
-            remaining=int(headers.get("X-RateLimit-Remaining", 0)) or None,
+            limit=_int("X-RateLimit-Limit"),
+            remaining=_int("X-RateLimit-Remaining"),
             reset=headers.get("X-RateLimit-Reset") or None,
-            burst=int(headers.get("X-RateLimit-Burst", 0)) or None,
-            retry_after_ms=int(headers.get("Retry-After", 0)) or None,
+            scope=headers.get("X-RateLimit-Scope") or None,
+            concurrency_limit=_int("X-RateLimit-Concurrency-Limit"),
+            concurrency_remaining=_int("X-RateLimit-Concurrency-Remaining"),
+            retry_after_seconds=_int("Retry-After"),
         )
 
     def get_reset_timestamp(self) -> float | None:
@@ -480,10 +501,8 @@ class RateLimitInfo(BaseModel):
             return None
 
     def get_retry_after_seconds(self) -> float | None:
-        """Get Retry-After value in seconds."""
-        if self.retry_after_ms:
-            return self.retry_after_ms / 1000.0
-        return None
+        """Return the Retry-After wait in seconds (already in seconds per spec)."""
+        return float(self.retry_after_seconds) if self.retry_after_seconds else None
 
 
 class EnrichmentResult(BaseModel):

@@ -51,8 +51,8 @@ Examples:
 
 Environment Variables:
   TRIQAI_API_KEY          Your Triqai API key (required)
-  MAX_CONCURRENT_REQUESTS Maximum concurrent requests (default: 5)
-  REQUEST_DELAY           Delay between requests in seconds (default: 0.1)
+  MAX_CONCURRENT_REQUESTS Max in-flight requests at once (default: 2, free plan limit)
+  REQUEST_DELAY           Min seconds between requests (default: 1.0 = 1 RPS, free plan limit)
         """,
     )
 
@@ -81,7 +81,7 @@ Environment Variables:
         "--max-concurrent", "-c",
         type=int,
         default=None,
-        help="Maximum concurrent requests (default: from env or 5)",
+        help="Max in-flight requests at once (default: from env or 2 for free plan)",
     )
 
     parser.add_argument(
@@ -161,9 +161,9 @@ async def main() -> int:
         console.print("Or use: python main.py --api-key your_api_key_here")
         return 1
 
-    # Get configuration
-    max_concurrent = args.max_concurrent or int(os.getenv("MAX_CONCURRENT_REQUESTS", "5"))
-    request_delay = float(os.getenv("REQUEST_DELAY", "0.1"))
+    # Get configuration (defaults match free-plan limits: 1 RPS, 2 concurrent)
+    max_concurrent = args.max_concurrent or int(os.getenv("MAX_CONCURRENT_REQUESTS", "2"))
+    request_delay = float(os.getenv("REQUEST_DELAY", "1.0"))
 
     # Check input file exists
     input_path = Path(args.input)
@@ -247,7 +247,13 @@ async def main() -> int:
     # Show rate limit info
     if client.rate_limit_info:
         info = client.rate_limit_info
-        console.print(f"\n[dim]Rate limit: {info.remaining}/{info.limit} remaining[/dim]")
+        parts = []
+        if info.limit is not None:
+            parts.append(f"RPS: {info.remaining}/{info.limit} remaining")
+        if info.concurrency_limit is not None:
+            parts.append(f"concurrency: {info.concurrency_remaining}/{info.concurrency_limit}")
+        if parts:
+            console.print(f"\n[dim]{' | '.join(parts)}[/dim]")
 
     console.print()
     return 0

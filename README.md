@@ -208,11 +208,11 @@ US,expense,SQ *VERVE ROASTERS gosq.com CA
 GB,expense,CARD PAYMENT - FALLOW LONDON
 ```
 
-| Column    | Required | Description                                |
-| --------- | -------- | ------------------------------------------ |
-| `country` | Yes      | ISO 3166-1 alpha-2 code (`US`, `GB`, `BR`) |
-| `type`    | Yes      | `expense` or `income`                      |
-| `title`   | Yes      | Raw transaction string from the bank       |
+| Column    | Required | Description                                                     |
+| --------- | -------- | --------------------------------------------------------------- |
+| `country` | Yes      | ISO 3166-1 alpha-2 code (`US`, `GB`, `BR`)                      |
+| `type`    | Yes      | `expense` or `income`                                           |
+| `title`   | Yes      | Raw transaction string from the bank                            |
 | `comment` | No       | Optional note (column may be omitted entirely; not sent to API) |
 
 ### Sample Dataset
@@ -318,29 +318,45 @@ The API uses an **entities array** pattern. Only identified entities are include
 
 ## Configuration
 
-| Environment Variable      | Default | Description                              |
-| ------------------------- | ------- | ---------------------------------------- |
-| `TRIQAI_API_KEY`          | --      | Your Triqai API key (**required**)       |
-| `MAX_CONCURRENT_REQUESTS` | `5`     | Maximum parallel API requests            |
-| `REQUEST_DELAY`           | `0.1`   | Minimum delay between requests (seconds) |
+| Environment Variable      | Default | Description                                                       |
+| ------------------------- | ------- | ----------------------------------------------------------------- |
+| `TRIQAI_API_KEY`          | --      | Your Triqai API key (**required**)                                |
+| `MAX_CONCURRENT_REQUESTS` | `2`     | Max in-flight requests at once (free plan limit: 2)               |
+| `REQUEST_DELAY`           | `1.0`   | Min seconds between dispatching requests (free plan: 1.0 = 1 RPS) |
 
-All options can also be passed as CLI arguments. Run `python main.py --help` for details.
+Defaults are tuned for the **free plan**. On a paid plan you can raise both values. All options can also be passed as CLI arguments, run `python main.py --help` for details.
 
 ## Rate Limiting
 
-The client automatically handles API rate limits with exponential backoff and retries. You don't need to manage this yourself. The API uses a **token bucket algorithm** you can burst up to `Remaining` requests instantly, then tokens refill at `Limit` per second. Current rate limit status is displayed after each run and can be inspected via:
+The API enforces two independent limits:
+
+- **RPS (token bucket)** - sustains requests per second; tracked by `X-RateLimit-*` headers
+- **Concurrency cap** - max parallel in-flight requests; tracked by `X-RateLimit-Concurrency-*` headers
+
+The client enforces both automatically with exponential backoff and retries. You don't need to manage this yourself. When a `429` is returned, the `Retry-After` header (in **seconds**) is honoured before the next attempt. `503 Service Unavailable` is also retried.
+
+Current rate limit status is displayed after each run and can be inspected via:
 
 ```python
-client.rate_limit_info  # RateLimitInfo(limit=10, remaining=87, reset='2026-01-19T10:30:00Z', burst=100)
+info = client.rate_limit_info
+# RateLimitInfo(
+#   limit=1, remaining=0, reset='2026-02-16T10:30:01Z', scope='rps',
+#   concurrency_limit=2, concurrency_remaining=1,
+#   retry_after_seconds=1
+# )
 ```
 
 Response headers tracked:
 
-- `X-RateLimit-Limit` -- Requests per second (sustained refill rate)
-- `X-RateLimit-Remaining` -- Current tokens available (can burst up to this many instantly)
-- `X-RateLimit-Reset` -- ISO timestamp when tokens start refilling
-- `X-RateLimit-Burst` -- Maximum burst capacity
-- `Retry-After` -- Milliseconds until a token is available (on 429 responses)
+| Header                              | Description                                    |
+| ----------------------------------- | ---------------------------------------------- |
+| `X-RateLimit-Limit`                 | Requests per second (sustained rate)           |
+| `X-RateLimit-Remaining`             | RPS tokens available right now                 |
+| `X-RateLimit-Reset`                 | ISO timestamp when the RPS bucket refills      |
+| `X-RateLimit-Scope`                 | Active limit dimension: `rps` or `concurrency` |
+| `X-RateLimit-Concurrency-Limit`     | Max concurrent in-flight requests for your org |
+| `X-RateLimit-Concurrency-Remaining` | Remaining concurrency slots                    |
+| `Retry-After`                       | Seconds to wait before retrying (429 and 503)  |
 
 ## Project Structure
 
