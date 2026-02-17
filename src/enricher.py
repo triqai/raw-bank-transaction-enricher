@@ -39,7 +39,9 @@ class TransactionEnricher:
     def load_transactions_from_csv(self, csv_path: str | Path) -> list[Transaction]:
         """Load transactions from a CSV file.
 
-        Expected CSV columns: country, type, title, comment (optional)
+        Accepts comma- or semicolon-delimited files. Delimiter is auto-detected.
+        No quoting required. Required columns: country, type, title.
+        Optional column: comment (column may be absent entirely).
 
         Args:
             csv_path: Path to the CSV file
@@ -51,7 +53,15 @@ class TransactionEnricher:
         csv_path = Path(csv_path)
 
         with csv_path.open("r", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
+            # Auto-detect delimiter from the first line (supports , and ;)
+            sample = f.read(4096)
+            f.seek(0)
+            try:
+                dialect = csv.Sniffer().sniff(sample, delimiters=",;")
+            except csv.Error:
+                dialect = csv.excel  # fall back to comma
+
+            reader = csv.DictReader(f, dialect=dialect)
 
             for row_num, row in enumerate(reader, start=2):
                 try:

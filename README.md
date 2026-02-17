@@ -190,14 +190,22 @@ asyncio.run(main())
 
 ## Input Format
 
-Prepare a CSV with these columns:
+Prepare a CSV with these columns. The delimiter is **auto-detected** (`,` or `;`) so no quoting is required. The `comment` column is entirely optional -- you can omit it from the file.
 
 ```csv
-country,type,title,comment
-US,expense,"SQ *VERVE ROASTERS gosq.com CA",Coffee shop
-GB,expense,"CARD PAYMENT - FALLOW LONDON",Restaurant
-BR,expense,"PIX ENVIADO - JOAO SILVA",P2P transfer
-NL,income,"SALARIS DECEMBER 25 #890",Monthly salary
+country;type;title
+US;expense;SQ *VERVE ROASTERS gosq.com CA
+GB;expense;CARD PAYMENT - FALLOW LONDON
+BR;expense;PIX ENVIADO - JOAO SILVA
+NL;income;SALARIS DECEMBER 25 #890
+```
+
+Commas work too:
+
+```csv
+country,type,title
+US,expense,SQ *VERVE ROASTERS gosq.com CA
+GB,expense,CARD PAYMENT - FALLOW LONDON
 ```
 
 | Column    | Required | Description                                |
@@ -205,7 +213,7 @@ NL,income,"SALARIS DECEMBER 25 #890",Monthly salary
 | `country` | Yes      | ISO 3166-1 alpha-2 code (`US`, `GB`, `BR`) |
 | `type`    | Yes      | `expense` or `income`                      |
 | `title`   | Yes      | Raw transaction string from the bank       |
-| `comment` | No       | Optional note (not sent to API)            |
+| `comment` | No       | Optional note (column may be omitted entirely; not sent to API) |
 
 ### Sample Dataset
 
