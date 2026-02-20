@@ -126,6 +126,7 @@ class TriqaiClient:
         self._rate_limit_info: RateLimitInfo | None = None
         self._rate_limit_lock = asyncio.Lock()
         self._last_request_time = 0.0
+        self._limits_adapted = False  # True once server-reported limits have been applied
 
     def _get_headers(self) -> dict[str, str]:
         """Get request headers with authentication."""
@@ -159,11 +160,41 @@ class TriqaiClient:
                 await asyncio.sleep(self.request_delay - elapsed)
 
     def _update_rate_limit_info(self, headers: httpx.Headers) -> None:
-        """Update rate limit info from response headers."""
+        """Update rate limit info from response headers.
+
+        On the first response that carries server-reported limits, automatically
+        raises request_delay and max_concurrent to match the plan -- so paid-plan
+        users get full speed without touching any config.
+        """
         self._rate_limit_info = RateLimitInfo.from_headers(dict(headers))
         self._last_request_time = time.time()
 
         info = self._rate_limit_info
+
+        # Adapt proactive throttle to server-reported plan limits (once per session).
+        if not self._limits_adapted:
+            if info.limit is not None and info.limit > 0:
+                server_delay = 1.0 / info.limit
+                if server_delay < self.request_delay:
+                    logger.info(
+                        f"Plan allows {info.limit} RPS -- raising request throughput "
+                        f"(delay {self.request_delay:.2f}s → {server_delay:.3f}s)"
+                    )
+                    self.request_delay = server_delay
+
+            if info.concurrency_limit is not None and info.concurrency_limit > self.max_concurrent:
+                logger.info(
+                    f"Plan allows {info.concurrency_limit} concurrent requests -- "
+                    f"raising from {self.max_concurrent}"
+                )
+                self.max_concurrent = info.concurrency_limit
+                # Re-create the semaphore so in-flight batches pick up the new limit.
+                if self._semaphore is not None:
+                    self._semaphore = asyncio.Semaphore(self.max_concurrent)
+
+            if info.limit is not None or info.concurrency_limit is not None:
+                self._limits_adapted = True
+
         if info.remaining is not None:
             logger.debug(f"RPS limit: {info.remaining}/{info.limit} remaining (scope={info.scope})")
         if info.concurrency_remaining is not None:
